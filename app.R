@@ -245,6 +245,8 @@ ui <- fluidPage(
 
                  leafletOutput(outputId = 'map2'),
 
+                 htmlOutput(outputId = "titol_track"),
+
                  htmlOutput(outputId =  "data_track"),
 
                  htmlOutput( outputId ="temps_inicial_track"),
@@ -303,17 +305,29 @@ ui <- fluidPage(
 
                mainPanel(
 
-                 # textOutput( outputId = "temps_fotogeoloc"),
+
+
+
+
+                 htmlOutput(outputId = "titol_geoloc"),
+
+                 htmlOutput( outputId ="interval_track"),
 
                  DTOutput(outputId = 'multiplefile'),
 
-                 DTOutput(outputId = 'multiplefile_1'),
+                 br(),
 
-                 DTOutput(outputId = 'multiplefile_2'),
+                 htmlOutput(outputId = "titol_geoloc_1"),
 
-                 leafletOutput(outputId = 'map'),
+                leafletOutput(outputId = 'map'),
 
-                 textOutput( outputId = "multiplefile_item")
+                DTOutput(outputId = 'multiplefile_1'),
+
+
+
+
+
+
 
                ) #Tancament main panel
 
@@ -595,6 +609,7 @@ server <- function(input, output) {
 
     })) #tancament del mapa de track-------------------------------------------
 
+    output$titol_track <- renderUI(HTML("<h4 align='center'>DADES DEL TRACK</h4>"))
 
     output$data_track <- renderUI(HTML(paste("<br/>","El track és va efectuar el dia :",isolate( as.character(date(as_datetime(Temps_Inicial_Track()) )) ),"<br/>")))
 
@@ -658,6 +673,18 @@ server <- function(input, output) {
 
       return()
 
+    #reiniciem les sortides
+
+    output$multiplefile <-NULL
+
+    output$titol_geoloc <-NULL
+
+    output$multiplefile_1 <- NULL
+
+    output$map <-NULL
+
+    #<- Condicio de metadades en la foto
+
 
     n_fotos <- reactive(nrow(input$myPic))
 
@@ -670,6 +697,8 @@ server <- function(input, output) {
     #------Funcio per extreure el temps--------------------------------------------------
 
     foto_geoloc <- function(pat,sincro)  {
+
+
 
       time_s <- (as.data.frame(exifr::read_exif(pat, tags = 'DateTimeOriginal')))
 
@@ -743,7 +772,6 @@ contenido <- sapply(all_files$SourceFile, function(x){paste0("data:image/",tools
       if (!((tgeoloc_corret)  %within% interval_track)) {
 
 
-
         intrack <- "Out track"
 
       }else{
@@ -776,9 +804,29 @@ contenido <- sapply(all_files$SourceFile, function(x){paste0("data:image/",tools
 
     assign("all_files1", all_files_1, envir = globalenv())
 
-    all_files_TABLE <- all_files_1 %>% select("id","imagen","DateTimeOriginal","time_s_tz","time_s_corr","intrack")
+    estado <- ifelse(all_files_1$intrack == "In track",
+                        "<span style='color: green; font-size: 20px;'>&#10004;</span>",
+                        "<span style='color: red; font-size: 20px;'>&#10006;</span>")
+
+    all_files_11 <- cbind(all_files_1,estado)
+
+
+    all_files_TABLE <- all_files_11 %>% select("id","imagen","DateTimeOriginal","time_s_corr","intrack", "estado")
+
+    names (all_files_TABLE)  <- c("Id","Imatge","Temps_Metadades","Temps_corretgit","Temps_Dins_track", "Estat")
 
     output$multiplefile <- renderDT( all_files_TABLE,escape = FALSE)
+
+    output$titol_geoloc <- renderUI(HTML("<h4 align='center'>CARREGA PREVIA FOTOGRAFIES</h4>"))
+
+    output$interval_track <- renderUI( HTML(paste0("- HORA INICI TRACK: ",
+
+                                                        isolate(to_hour(Temps_Inicial_Track()))),"      HORA FINAL TRACK:", isolate( to_hour( Temps_Final_Track() ) ) ))
+
+
+
+
+
 
   })
 
@@ -892,10 +940,13 @@ contenido <- sapply(all_files$SourceFile, function(x){paste0("data:image/",tools
 
 coords_rv<- reactiveValues(data = data.frame(isolate(posicio_rv$datos)))
 
+output$titol_geoloc_1 <- renderUI(HTML("<h4 align='center'>FOTOGRAFIES GEOLOCALITZADES</h4>"))
+
 output$multiplefile_1 <- renderDT({
 
     df_selecc <- coords_rv$data[, c("id","imagen","time_s_corr","time","lng","lat")]
 
+    names(df_selecc)<- c("Id","Imatges","Temps_corretgit","Temps_track","Longitut","Latitut")
 
   },escape = FALSE)
 
