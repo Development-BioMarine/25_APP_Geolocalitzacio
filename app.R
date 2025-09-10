@@ -1,29 +1,47 @@
 #----------------Llibreries necesaries----------------------------------
+
 library(shiny)
+
 library(exifr)
+
 library(dplyr)
+
 library(leaflet)
+
 library(xml2)
+
 library(sf)
+
 library(stringr)
+
 library(terra)
+
 library(base64enc)
+
 library (lubridate)
+
 library(magick)
+
 library(leafpop)
+
 library(knitr)
+
+library(DT)
+
+
+
 #----------------Configurem el tamany max dels arxius de l APP------------------
 
 options(shiny.maxRequestSize = 999*1024^2)
 
 #----------------Configurar exif----------------------------------------------
 
+
 #Carregem exif portable ( nomes l executable, no la app) a una carpeta de l app
 
 exifr::configure_exiftool(command = "./WWW/exif/exiftool.pl",
 
                           perl_path =  "./WWW/exif/perl.exe" ,quiet = FALSE)
-
 
 
 ################ Funcions necesaries per gestio del track  #####################
@@ -33,18 +51,12 @@ exifr::configure_exiftool(command = "./WWW/exif/exiftool.pl",
 
 syncro <- function (hora_gps,hora_camara,difer_seg_manual) {
 
-  if (hora_gps == "0000/00/00 00:00:00" | hora_gps == "" | is.null(hora_camara )) {
 
+  if (hora_gps == "0000/00/00 00:00:00" | hora_gps == "" | is.null(hora_camara )) {
 
     dfrn  <- as.integer(difer_seg_manual)
 
-
-
-
     return (dfrn)
-
-
-
 
   } else {
 
@@ -59,41 +71,55 @@ syncro <- function (hora_gps,hora_camara,difer_seg_manual) {
 
 track <-function(track_dir){
 
-    x <- xml2::read_html(track_dir)
-    gpx_tags <- xml2::xml_find_all(x, "//trkpt")
-    gpx <- xml2::xml_attrs(gpx_tags)
-    gpx.vec <- unlist(gpx,use.names = TRUE)
-    lng <- as.numeric(gpx.vec[names(gpx.vec)=="lon"])
-    lat <- as.numeric(gpx.vec[names(gpx.vec)=="lat"])
-    gpx_tags_t <- xml_find_all(gpx_tags, ".//time")
-    gpx_time <-with_tz( ymd_hms(as_datetime(xml_text( gpx_tags_t))),tzone = "Europe/Madrid")
+  x <- xml2::read_html(track_dir)
 
-    gpxdf <- data.frame(
-        cbind(
-            lng,
-            lat),
-        gpx_time)
+  gpx_tags <- xml2::xml_find_all(x, "//trkpt")
 
-    names(gpxdf) <- c("lng","lat","time")
+  gpx <- xml2::xml_attrs(gpx_tags)
 
-    return(gpxdf)
+  gpx.vec <- unlist(gpx,use.names = TRUE)
+
+  lng <- as.numeric(gpx.vec[names(gpx.vec)=="lon"])
+
+  lat <- as.numeric(gpx.vec[names(gpx.vec)=="lat"])
+
+  gpx_tags_t <- xml_find_all(gpx_tags, ".//time")
+
+  gpx_time <-with_tz( ymd_hms(as_datetime(xml_text( gpx_tags_t))),tzone = "Europe/Madrid")
+
+
+
+  gpxdf <- data.frame(
+
+    cbind(
+
+      lng,
+
+      lat),
+
+    gpx_time)
+
+  names(gpxdf) <- c("longitude","latitude","time")
+
+  return(gpxdf)
+
 }
 
 #----------------Funcio per convertir df (del gps) a sf----------------------
 
 gpxdf_sf <- function(df,crs){
 
-    sf <- st_as_sf(df,coords= c(1,2),crs="+proj=longlat +datum=WGS84")
+  sf <- st_as_sf(df,coords= c(1,2),crs="+proj=longlat +datum=WGS84")
 
-    y <- st_combine(sf)
+  y <- st_combine(sf)
 
-    g <- st_cast(y, 'LINESTRING')
+  g <- st_cast(y, 'LINESTRING')
 
-    return (g)
+  return (g)
 
 }
-#-------funcio per tobar el minim df$time es el vector dels temps del track, data es el temps de la foto
 
+#-------funcio per tobar el minim df$time es el vector dels temps del track, data es el temps de la foto
 
 posicio_foto <- function (hora_foto, df){
 
@@ -101,16 +127,19 @@ posicio_foto <- function (hora_foto, df){
 
   return (psc)
 
+
 }
 
 #----------funcio per pasar de datetime a hora--------------------------------------
 
-
 to_hour <- function(data) {
 
   hora_data <- as.character( hour(as_datetime(data)))
+
   minut_data<- as.character( minute(as_datetime(data)))
+
   segons_data<-as.character( second(as_datetime(data)))
+
 
   hora <- paste0(hora_data,":",minut_data,":",segons_data)
 
@@ -120,282 +149,286 @@ to_hour <- function(data) {
 
 #############################################################################
 
-##############################################################################
-##############################################################################
 
-#################  AQUI COMENÇA L APP
 
 ##############################################################################
+
+##############################################################################
+
+
+
+#################  AQUI COMENÇA L APP  #######################################
+
+
+
+##############################################################################
+
 #############################################################################
 
+
+
 ui <- fluidPage(
-    h3("GEOLOCALITZACIO DE FOTOGRAFIES"),
-    br(),
-    navlistPanel(
-        id = "tabset","MENU",
 
-################    PAGINA SINCRONITAZCIO D EQUIPS###############################
+  h3("GEOLOCALITZACIO DE FOTOGRAFIES"),
 
-        #---------------------------------------------------------------------------------------
+  br(),
 
-        tabPanel("Sincronitzacio d instruments", "Sincronitzacio de camara i gps/movil: Carreguem una fotografia del GPS o movil on aparegui la hora amb resolucio de segons o just en el moment que canvii la minutera o si s ajusta manualment potser qualsevol foto" ,
+  navlistPanel(
 
+    id = "tabset","MENU",
 
-                 sidebarLayout(
+    ################    PAGINA SINCRONITACIO D EQUIPS   ###############################
 
-                     sidebarPanel(
-                         fluidRow(
-                             fileInput("myrefcam", "Fotografia de referencia del gps/mobil", accept = c('image/png', 'image/jpeg'),multiple = FALSE),
-                             br(),
-                             textInput("hora_gps","Entra el valor de la data y hora que apareix a la foto del gps o mobil en format yyyy/mm/dd hh:mm:ss","0000/00/00 00:00:00"),
-                             br(),
-                             textInput("difer_seg_man","Si ho desitges pots sincronitzar directamenta fegint o treient segons","0000"),
-                             br(),
-                             actionButton("sincro","Sincronitzar camara/gps")
-                         )),
+    #------------------Entrada sincro---------------------------------------------------
 
-#----Sortida sincronitzacio--------------------------------------------------
+    tabPanel("Sincronitzacio d instruments", "Sincronitzacio de camara i gps/movil: Carreguem una fotografia del GPS o movil on aparegui la hora amb resolucio de segons o just en el moment que canvii la minutera o si s ajusta manualment potser qualsevol foto" ,
 
+             sidebarLayout(
 
-                     mainPanel(
+               sidebarPanel(
 
-                         div(id = "image-container", style = "display:flexbox"),
+                 fluidRow(
 
-                         htmlOutput( outputId = "exif_ref"),
+                   fileInput("myrefcam", "Fotografia de referencia del gps/mobil", accept = c('image/png', 'image/jpeg'),multiple = FALSE),
 
-                         htmlOutput( outputId = "syncro"),
+                   br(),
 
-                         htmlOutput( outputId = "hora_ref_ajust")
+                   textInput("hora_gps","Entra el valor de la data y hora que apareix a la foto del gps o mobil en format yyyy/mm/dd hh:mm:ss","0000/00/00 00:00:00"),
 
-                     )
+                   br(),
 
-                 )
-        ),
+                   textInput("difer_seg_man","Si ho desitges pots sincronitzar directamenta fegint o treient segons","0000"),
 
-################    PAGINA DADES DEL TRACK ###############################
+                   br(),
 
-#--------------------------------------------------------------------------------
+                   actionButton("sincro","Sincronitzar camara/gps")
 
+                 )),
 
+               #-------------Sortida sincronitzacio--------------------------------------------------
 
-  tabPanel("Gestio del Track", "Comprobació del track, recorregut, hores inici i final i durada",
-           sidebarLayout(
+               mainPanel(
 
-             sidebarPanel(
-               fluidRow(
-                 fileInput("myTrack", "Escull arxiu track", accept = c('.gpx'),multiple = FALSE ),
+                 div(id = "image-container", style = "display:flexbox"),
 
-                 actionButton("Data_track_button","Mapejar Track")
+                 htmlOutput( outputId = "exif_ref"),
 
-               )
-             ),
+                 htmlOutput( outputId = "syncro"),
 
-  #--------------Sortida gestio track--------------------------------------
+                 htmlOutput( outputId = "hora_ref_ajust")
 
-             mainPanel(
+               ) #tancament main Panel sincro
 
-               leafletOutput(outputId = 'map2'),
+             )), #Tancament tabpanel
 
-               htmlOutput(outputId =  "data_track"),
+    ################    PAGINA DADES DEL TRACK ###############################
 
-               htmlOutput( outputId ="temps_inicial_track"),
+    #----------------Entrada track----------------------------------------------------
 
-               htmlOutput( outputId ="temps_final_track"),
+    tabPanel("Gestio del Track", "Comprobació del track, recorregut, hores inici i final i durada",
 
-               htmlOutput( outputId ="durada_track"),
+             sidebarLayout(
 
-               htmlOutput(outputId = "longitut_track")
+               sidebarPanel(
 
-             )
+                 fluidRow(
 
-           )),
+                   fileInput("myTrack", "Escull arxiu track", accept = c('.gpx'),multiple = FALSE ),
 
-################    PAGINA GEOLOCALITZACIO ###############################
+                   actionButton("Data_track_button","Mapejar Track")
 
-#--------------------------------------------------------------------------------
-tabPanel("Geolocalitzacio camara", "Geolocalitzacio de la fotografia" ,
+                 )),
 
+               #--------------Sortida  track---------------------------------------------------
 
-         sidebarLayout(
+               mainPanel(
 
-           sidebarPanel(
-             fluidRow(
-               "Carregar la fotografia  que es vol geolocalitzar",
+                 leafletOutput(outputId = 'map2'),
 
-               fileInput("myPic",label="", accept = c('image/png', 'image/jpeg'),multiple = FALSE),
+                 htmlOutput(outputId =  "data_track"),
 
-               "Geolocalitzar la fotografia i mostrar-la en plànol.",
+                 htmlOutput( outputId ="temps_inicial_track"),
 
-               actionButton("geoloc_button","Geolocalitzar"),
+                 htmlOutput( outputId ="temps_final_track"),
 
-              br(),
+                 htmlOutput( outputId ="durada_track"),
 
-              br(),
+                 htmlOutput(outputId = "longitut_track")
 
-              "Fixar posició, afegir al dataset de registres i  afegir a les metadades de la fotografia la posició",
+               ) #Tancament mainPanel track
 
-              actionButton("fix_button","Fixar i afegir Metadds"),
+             )), #Tancament paneltab track
 
-              br(),
 
-              br(),
 
-              "Descarregar la foto amb metadades geolocalitzades un cop s ha ajustat completament la posició.",
+    ################    PAGINA GEOLOCALITZACIO ###############################
 
-               downloadButton("descarrega")
+    #-------------Entrada geolocalitzacio  --------------------------------------
 
-             )),
+    tabPanel("Geolocalitzacio camara", "Geolocalitzacio de la fotografia" ,
 
+             sidebarLayout(
 
+               sidebarPanel(
 
-           #----Sortida geolocalitzacio--------------------------------------------------
+                 fluidRow(
 
+                   "Carregar la fotografia  que es vol geolocalitzar",
 
-           mainPanel(
+                   fileInput("myPic",label="", accept = c('image/png', 'image/jpeg'),multiple = TRUE),
 
-             div(id = "image-container2", style = "display:flexbox"),
+                   "Geolocalitzar la fotografia i mostrar-la en plànol.",
 
-           textOutput( outputId = "temps_fotogeoloc"),
+                   actionButton("geoloc_button","Geolocalitzar"),
 
-             textOutput( outputId = "temps_fotogeoloc_corr"),
+                   br(),
 
+                   br(),
 
-             textOutput( outputId = "text5"),
+                   "Fixar posició, afegir al dataset de registres i  afegir a les metadades de la fotografia la posició",
 
-             tableOutput('coordsTable1'),
+                   actionButton("fix_button","Fixar i afegir Metadds"),
 
-            leafletOutput(outputId = 'map')
-           )
-         )),
+                   br(),
 
+                   br(),
 
-################    PAGINA DF TOTAL ###############################
+                   "Descarregar la foto amb metadades geolocalitzades un cop s ha ajustat completament la posició.",
 
-#--------------------------------------------------------------------------------
+                   downloadButton("descarrega")
 
+                 )),
 
+               #---------------------Sortida geolocalitzacio--------------------------------------------------
 
-tabPanel("Resum de les observacions", "Represntacio de totes les observacions ",
-         sidebarLayout(
+               mainPanel(
 
-           sidebarPanel(
-             fluidRow(
+                 # textOutput( outputId = "temps_fotogeoloc"),
 
-               actionButton("afegir_button","Mapejar Track")
+                 DTOutput(outputId = 'multiplefile'),
 
+                 DTOutput(outputId = 'multiplefile_1'),
 
+                 DTOutput(outputId = 'multiplefile_2'),
 
+                 leafletOutput(outputId = 'map'),
 
+                 textOutput( outputId = "multiplefile_item")
 
-             )
-           ),
+               ) #Tancament main panel
 
-           #--------------Sortida gestio track--------------------------------------
+             )), #Tancament tabpanel geolocalitzacio
 
-           mainPanel(
 
-             leafletOutput(outputId = 'map3'),
+    #---Tancament del costat client------------------------------------
 
-             textOutput( outputId = "text10"),
+  ))
 
-             tableOutput('coordsTable2')
-
-           )
-
-         ))
-
-
-#---Tancament del costat client------------------------------------
-))
 
 ###############################################################################
+
 #####################      SERVER     #########################################
+
 ##############################################################################
+
 
 server <- function(input, output) {
 
+
   #############################################################################
+
 
   #Variables reactives sincronitzacio GPS/ Càmara
 
+
   #############################################################################
+
+
 
   #Per obtindre el path de la foto de referencia-------------------------------
 
 
   pic_ref <- reactive({
 
-                        if (is.null(input$myrefcam$datapath))
+    if (is.null(input$myrefcam$datapath))
 
-                              return()
+      return()
 
+    as.character( input$myrefcam$datapath)
 
-                         as.character( input$myrefcam$datapath)
-                        })
+  })
+
   #Per obtindre les dades exif de la foto referencia-----------------------
 
-  dades_foto_ref <- reactive ( { if (is.null(input$myrefcam$datapath))
+  dades_foto_ref <- reactive ( { if (is.null(input$myrefcam$datapath)){
 
-                                return()
 
-                                exifr::read_exif( pic_ref(), tags = 'DateTimeOriginal')} )
+    return()}
+
+    exifr::read_exif( pic_ref(), tags = 'DateTimeOriginal')} )
+
+
 
   #Del temps extret de l Exif-----------------------------------------------------
 
-  time_foto_ref <- reactive (  { if (is.null(input$myrefcam$datapath))
 
-                                return()
+  time_foto_ref <- reactive (  { if (is.null(input$myrefcam$datapath)){
 
 
-                                (ymd_hms(dades_foto_ref()[,2]) )})
+    return()}
 
-#Per calcular les diferencies de temps i sincronitzar-----------------------
 
-#fem servir la funcio syncro definida al inici
+    (ymd_hms(dades_foto_ref()[,2]) )})
 
+  #Per calcular les diferencies de temps i sincronitzar-----------------------
+
+  #fem servir la funcio syncro definida al inici
 
   t_syncro <-reactive (syncro(input$hora_gps ,as_datetime(time_foto_ref()),input$difer_seg_man))
 
+  #############################################################################
 
-#############################################################################
+  #Variables reactives  visalitzacio inicial del track
 
-    #Variables reactives  visalitzacio inicial del track
+  #############################################################################
 
-#############################################################################
-
-#Obtencio del directori del track---------------------------------------------
-
-   trck_path <- reactive({
+  #Obtencio del directori del track---------------------------------------------
 
 
-     if (is.null( input$myTrack$datapath))
+  trck_path <- reactive({
 
-          return()
+    if (is.null( input$myTrack$datapath))
 
-     as.character(input$myTrack$datapath)
-   })
+      return()
+
+    as.character(input$myTrack$datapath)
+
+  })
 
 
-#Dataframe del track--------------------------------------------------------
+  #Dataframe del track--------------------------------------------------------
 
-#Fem servir la funcio track() definida a l inici
+  #Fem servir la funcio track() definida a l inici
 
   track_df <- reactive({
 
     if (is.null(trck_path())){
 
       return()
+
     }
 
     track(trck_path())})
 
-#Obtenim ultim punt del track-----------------------------------------------
+
+  #Obtenim ultim punt del track-----------------------------------------------
 
   n_punts <- reactive(track_df() %>% nrow())
 
   Temps_Inicial_Track <-reactive(as_datetime(track_df()[1,3]))
 
   Temps_Final_Track <-reactive(as_datetime(track_df()[n_punts(),3]))
+
 
   #Calculem durada del track---------------------------------------------------
 
@@ -416,588 +449,503 @@ server <- function(input, output) {
   Longitud_track <- reactive ( round( st_length(gpxdf_sf(track_df())),0))
 
 
-#############################################################################
 
-  #Variables reactives geolocalitzacio de la foto
+  #/////////////////////////////////////////////////////////////////////////////
 
-#############################################################################
-  #Per obtindre el path de la foto a georefernciar-------------------------------
+  #-----------------------------------------------------------------------------
 
-  pic_geo <- reactive({
+  #-----------------------------Gestio sincronitzacio-----------------------------
+
+  #///////////////////////////////////////////////////////////////////////////
+
+  #=================Input foto de referencia====================================
+
+
+  observeEvent(input$myrefcam, {  #Al carregar noves imatges cal esborrar les dades de les anteriors
+
+    camRef <- input$myrefcam
+
+    if (is.null(camRef))
+
+      return()
+
+    removeUI(selector = "#image-container > * ")
+
+    b64 <- base64enc::dataURI(file = camRef$datapath, mime = "image/png")
+
+    insertUI(
+
+      selector = "#image-container",
+
+      where = "afterBegin",
+
+      ui = img(src = b64, width = 250, height = 250)
+
+    )
+
+    #--------Condicio foto amb metadades-------------------------------------
+
+    if (ncol(dades_foto_ref())<2 ){
+
+      showNotification("La foto no te metadades")
+
+      return()}
+
+    # -----Extraccio de la hora de la foto de referencia------------------------
+
+    output$exif_ref <- renderUI(HTML(paste0("Les metadades de la imatge de referencia son:", "<br/>",
+
+                                            "- Dia: ",
+
+                                            as.character(date(as_datetime(time_foto_ref()))), "<br/>",
+
+                                            "- Hora:  ",
+
+                                            to_hour(time_foto_ref())
+    ) )) #Tancament del RenderUI------------------------------------------------
+
+  }) #=====Tancament de la carrega de la foto de referncia=========================
+
+
+  #========================Boto de sincro========================================
+
+  observeEvent(input$sincro, {
+
+    #-----Condicio foto carregada-----------------------------------------------
+
+    if (is.null(pic_ref()) ) {
+
+      showNotification("Es necesari carregar foto de referencia")
+
+      return() }
+
+    #---Condicio foto amb metadades------------------------------------------------
+
+    if (ncol(dades_foto_ref()) < 2 ) {
+
+      showNotification("La foto no te metadades")
+
+      return() }
+
+    #-----Sortida de la info de sincronitazacio-------------------------------------
+
+    output$syncro <- renderUI(HTML(paste0("<br/>","El temps a sincronitzar en segons es de: ",
+
+                                          isolate( as.character(t_syncro())),"segons","<br/>" ) ))
+
+    output$hora_ref_ajust <- renderUI(HTML(paste0("<br/>","El nou temps sincronitzat ajustat és:","<br/>",
+
+                                                  "- Dia: ",
+
+                                                  isolate( as.character(date(as_datetime(time_foto_ref() + t_syncro())))),"<br/>",
+
+
+                                                  "- Hora: ",
+
+                                                  isolate(to_hour(time_foto_ref() + t_syncro())))
+
+
+    )) #Tancament de l output de render text
+
+
+  }) #==========================Tancament boto sincro==========================
+
+
+
+  #/////////////////////////////////////////////////////////////////////////////
+
+  #-----------------------------------------------------------------------------
+
+  #-----------------------------Gestio del track------------------------------
+
+  #///////////////////////////////////////////////////////////////////////////
+
+
+  #==========================Boto de dibuix del track=========================
+
+  observeEvent(input$Data_track_button,{
+
+    #---Condicio de track carregat per dibuixar-lo----------------------------
+
+    if (is.null(trck_path()) ) {
+
+      showNotification("No hi ha cap track carregat")
+
+      removeModal()
+
+      return()
+
+    }
+
+    #---------------Mapa del track-------------------------------------------------
+
+    output$map2 <- (renderLeaflet({
+
+
+
+      leaflet() %>%
+
+        addPolylines(data = shape_track(),color = "red",weight = 2) %>%
+
+        addProviderTiles(providers$Esri.WorldStreetMap,group = "WSMWorld Street Map") %>%
+
+        addProviderTiles(providers$Esri.WorldImagery,group = "Satel.lit") %>%
+
+        addLayersControl(baseGroups = c("Satel.lit","World Street Map" ))
+
+    })) #tancament del mapa de track-------------------------------------------
+
+
+    output$data_track <- renderUI(HTML(paste("<br/>","El track és va efectuar el dia :",isolate( as.character(date(as_datetime(Temps_Inicial_Track()) )) ),"<br/>")))
+
+    output$temps_inicial_track <- renderUI( HTML(paste0("- La hora inicial del track és: ",
+
+                                                        isolate(to_hour(Temps_Inicial_Track()))) ))
+
+
+    output$temps_final_track <- renderUI(HTML(paste0( "- La hora final del track és: ",
+
+                                                      isolate( to_hour( Temps_Final_Track() ) ) ) ))
+
+
+    output$durada_track <- renderUI(HTML( paste("La durada del track és:",  isolate(as.character(Durada_Track())), "min")))
+
+    output$longitut_track <- renderUI(HTML( paste("El recorregut del track son:", isolate(as.character( Longitud_track())), "m")))
+
+  }) #====================tancament boto dibuixar track==========================
+
+
+  #/////////////////////////////////////////////////////////////////////////////
+
+  #-----------------------------------------------------------------------------
+
+  #-----------------------------Gestio geolocalitazio fotos-----------------------------
+
+  #///////////////////////////////////////////////////////////////////////////
+
+  #-------------Preparacio de varilables per la geolocalitzacio multiple------------
+
+  posicio_rv <- reactiveValues(datos = data.frame(id= 1,
+                                                   #imagen=NULL,
+                                                   SourceFile= "./WWW",
+                                                   lng = 15,
+                                                   lat = 35,
+                                                   time_s_corr = 1,
+                                                   time = 1,
+                                                   intrack ="Out track"))
+
+
+
+  coords_rv <- reactiveValues(data = data.frame(id= 1,
+                                                 #imagen=NULL,
+                                                 SourceFile= "./WWW",
+                                                 lng = 15,
+                                                 lat = 35,
+                                                 time_s_corr = 1,
+                                                 time= 1,
+                                                 intrack= "Out track"))
+
+
+
+
+
+  #================Carrega de les fotos a geolocalitzar=====================================
+
+
+  observeEvent(input$myPic, {
 
     if (is.null(input$myPic$datapath))
 
       return()
 
 
-    as.character( input$myPic$datapath)
-  })
+    n_fotos <- reactive(nrow(input$myPic))
 
+    assign("nfotos", n_fotos(), envir = globalenv())
 
+    #Creem vector de temps de sincro per poder aplicar purr::
 
-  dades_foto_geo <- reactive ( { if (is.null(input$myPic$datapath))
+    t_syncro_v <- as.list(rep(t_syncro(), n_fotos()))
 
-    return()
+    #------Funcio per extreure el temps--------------------------------------------------
 
-    exifr::read_exif( pic_geo(), tags = 'DateTimeOriginal')} )
+    foto_geoloc <- function(pat,sincro)  {
 
-  #Del temps extret de l Exif-----------------------------------------------------
+      time_s <- (as.data.frame(exifr::read_exif(pat, tags = 'DateTimeOriginal')))
 
-  time_foto_geo <- reactive (  {
+      time_s_tz <- (force_tz( as_datetime( ymd_hms( time_s[,2])), tzone = "Europe/Madrid" ))
 
-    if (is.null(input$myPic$datapath))
+      time_s <- cbind(time_s,time_s_tz)
 
-    {return()}
+      time_s_corr <- (as_datetime(time_s[,3] + sincro))
 
-   force_tz( as_datetime( ymd_hms(dades_foto_geo()[,2])), tzone= "Europe/Madrid" ) })
+      time_s <- cbind(time_s,time_s_corr)
 
-  #Temps corretgit sobre el que apliquem la funcio
+      return(time_s)
 
-  time_geoloc_corr <-reactive(as_datetime(time_foto_geo()+t_syncro()))
-
-  ###########################Funcio de minims#####################################
-
-  coordenades <-reactive ({
-
-    if (is.null(track_df())){
-      return()
     }
 
-   posicio_foto(time_geoloc_corr(),track_df())})
+    #----------------------------------------------------------------------------
+
+    #------Creem el DF que contindra tota la info----------------------------
+
+   all_files <- ({
+
+      req(input$myPic)
+
+      purrr::map2_dfr(input$myPic$datapath,t_syncro_v,foto_geoloc)
+
+    })
 
 
-  posicio <- reactive({
+    #ordenem les dates per poder asignar el id de forma ordenada
 
-    if (is.null(coordenades())){
-      data.frame(lng =1.5,lat=35,time=1)
+    all_files <- all_files[order (all_files$time_s_corr),]
+
+    #dplyr::arrange(all_files,time_s_corr)
+
+# despres d ordenar asignem l ID
+
+    id <- as.data.frame(seq_len(n_fotos()))
+
+    names(id) <- c("id")
+
+     all_files_1 <- cbind(all_files,id)
+
+     #Creem la columna d´imatges
+
+
+contenido <- sapply(all_files$SourceFile, function(x){paste0("data:image/",tools::file_ext(x), ";base64,",
+                                                             base64encode(x))})
+
+    all_files_1 <- cbind(all_files_1,contenido)
+
+
+    imagen <- sapply(all_files_1$contenido,function(x){HTML(paste0("<img src='",x,"' width='100' height='100'>"))})
+     all_files_1 <- cbind(all_files_1,imagen)
+
+
+
+     #Posem id com a primera columna
+
+    all_files_1 <- all_files_1 %>% select("id","SourceFile","DateTimeOriginal","time_s_tz","time_s_corr","imagen")
+
+  #Creem un vector de interval de temps del track per poder-lo aplicar amb purr::
+
+    Interval_track_v <- as.list(rep(Interval_track(), n_fotos()))
+
+
+    #-----------Funcio per comprobar que el temps de les fotos estan dins l inetrval de temps del track
+
+
+    intrack <- function(tgeoloc_corret, interval_track) {
+
+      if (!((tgeoloc_corret)  %within% interval_track)) {
+
+
+
+        intrack <- "Out track"
+
+      }else{
+
+        intrack <- "In track"
+
+      }
+
+      return(as.data.frame( intrack))
+
     }
 
-    data.frame(lng =coordenades()$lng,lat = coordenades()$lat,time=coordenades()$time)
+
+    #apliquem la funcio anterior a totes les fotos carregades
+
+    all_files_in_track <- ({
+
+      req(input$myPic)
+
+      purrr::map2_dfr(all_files_1$time_s_corr,Interval_track_v, intrack)
+
+    })
 
 
+    #Adjuntem el vector a la matriu total
+
+
+    all_files_1 <- cbind(all_files_1,all_files_in_track)
+
+
+    assign("all_files1", all_files_1, envir = globalenv())
+
+    all_files_TABLE <- all_files_1 %>% select("id","imagen","DateTimeOriginal","time_s_tz","time_s_corr","intrack")
+
+    output$multiplefile <- renderDT( all_files_TABLE,escape = FALSE)
 
   })
 
-  coords_rv <- reactiveValues(datos =isolate(posicio()))
+  #=============Geolocalitzacio de la foto carregada al apretar el boto=============
+
+  observeEvent(input$geoloc_button,{
+
+    #------condicio trackcarregat----------------------------------------------
+
+    if (is.null (trck_path()) ){
+
+      showNotification("No hi ha cap track carregat")
+
+      return()}
 
 
-
-#/////////////////////////////////////////////////////////////////////////////
- #-----------------------------------------------------------------------------
-#-----------------------------Gestio sincronitzacio-----------------------------
-#///////////////////////////////////////////////////////////////////////////
-
-    observeEvent(input$myrefcam, {
-
-  #Esborrarem totes les fotos que hi han a WWW-----------------------------
-
-      directori_imatges <- ".\\WWW"
-
-      llistat_imatges <-reactive( list.files(path= directori_imatges,pattern = "\\.(JPG|JPEG|PNG)$", full.names = TRUE))
-
-      if (is.null(llistat_imatges()))
-
-        return()
-
-      file.remove(llistat_imatges())
-
-#-----------------------------------------------------------------------------------
-
-        camRef <- input$myrefcam
-
-        if (is.null(camRef))
-            return()
-
-        removeUI(selector = "#image-container > * ")
-
-        b64 <- base64enc::dataURI(file = camRef$datapath, mime = "image/png")
-
-        insertUI(
-            selector = "#image-container",
-            where = "afterBegin",
-            ui = img(src = b64, width = 250, height = 250)
-        )
+    #-----condicio foto a georeferneciar carregada------------------------------
 
 
+    if (is.null (input$myPic) ){
 
-        if (ncol(dades_foto_ref())<2 ){
-          showNotification("La foto no te metadades")
-          removeModal()
-          return()
-        }
+      showNotification("Es necesari carregar fotos a georeferenciar")
 
-        output$exif_ref<-renderUI (HTML(paste0("Les metadades de la imatge de referencia son:", "<br/>",
+      removeModal()
 
-                                          "- Dia: ",
+      return()}
 
-                                          as.character(date(as_datetime(time_foto_ref ()))), "<br/>",
-
-                                          "- Hora:  ",
-
-                                          to_hour(time_foto_ref ())
+ #-----esborrem el mapa si n hi havia un
 
 
-                                                                                         ) ))
+   #output$map<-NULL
+
+    #coords_rv$data<-(posicio_rv$datos)
+
+    # nde files del dataframe
+
+    #Funcio per expreure les posicions de les fotos en cas que siguin dintre del track
+
+
+    coordenada <- data.frame()
+
+
+    for(i in 1:nfotos) {
+
+       if (all_files1[i,7] == "Out track"){
+
+
+    coordenada_item <- data.frame (longitude = NA,latitude = NA,time = ( all_files1[i,5]))
+
+    }else{
+
+    coordenada_item <- as.data.frame(posicio_foto(all_files1[i,5],track_df()))
+
+}  #tancament ifelse
+
+ coordenada <- bind_rows(coordenada, coordenada_item)
+
+    } #tancament loop
+
+    names(coordenada) <- c("lng","lat","time")
+
+    all_files_33 <- (cbind(all_files1,coordenada))
+
+    #Cal extreure els que no tenen long/lat
+
+    all_files_3 <- subset(all_files_33, !is.na(lat))
+
+    all_files_3 <- subset(all_files_33, !is.na(lng))
+
+
+    #Creem un df amb els camps mes impoertants
+
+    posicio_rv$datos <- (select(all_files_3,"id","SourceFile","lng","lat","time_s_corr","time","intrack","imagen"))
+
+
+    ###############################################################
+
+    #Planol de les observacions---------------------------------------------
+
+    output$map <- renderLeaflet({
+
+      leaflet() %>%
+        addPolylines(data = shape_track (),color = "red",weight = 4) %>%
+        addProviderTiles(providers$Esri.WorldStreetMap,group = "WSMWorld Street Map") %>%
+        addProviderTiles(providers$Esri.WorldImagery,group = "Satel.lit") %>%
+        addLayersControl(baseGroups = c("Satel.lit","World Street Map"))%>%
+
+        addMarkers(data = (posicio_rv$datos),
+
+                   group = "dades_finals",
+
+                   layerId = posicio_rv$datos$id,
+
+                   lng= isolate(posicio_rv$datos$lng),
+
+                   lat= isolate(posicio_rv$datos$lat),
+
+                   options = markerOptions(draggable = TRUE),
+
+                   popup =  paste ( "<br>",
+                                    "ID: ", as.character(posicio_rv$datos$id),
+                                    "<br>"))%>%
+
+        addPopupImages(posicio_rv$datos$SourceFile,group = "dades_finals", width = 150)
+
 
 
     })
 
-    observeEvent(input$sincro, {
+    ########################Tancament del map de geolocalit fotos####################
 
+coords_rv<- reactiveValues(data = data.frame(isolate(posicio_rv$datos)))
 
-      if (is.null (pic_ref()) ){
-        showNotification("Es necesari carregar foto de referencia")
-        removeModal()
-        return()
-      }
+output$multiplefile_1 <- renderDT({
 
-      if (ncol(dades_foto_ref())<2 ){
-        showNotification("La foto no te metadades")
-        removeModal()
-        return()
-      }
+    df_selecc <- coords_rv$data[, c("id","imagen","time_s_corr","time","lng","lat")]
 
-       output$syncro <-renderUI (HTML(paste0("<br/>","El temps a sincronitzar en segons es de: ",
 
-                                   isolate( as.character(t_syncro())),"segons","<br/>" ) ))
+  },escape = FALSE)
 
-       output$hora_ref_ajust <-renderUI(HTML(paste0("<br/>","El nou temps sincronitzat ajustat és:","<br/>",
 
-                                                    "- Dia: ",
-
-                                     isolate( as.character(date(as_datetime(time_foto_ref()+t_syncro())))),"<br/>",
-
-                                                   "- Hora: ",
-                                                    isolate(to_hour(time_foto_ref()+t_syncro())))
-
-
-                                      ))
-
-  })
-
-
-
-    #/////////////////////////////////////////////////////////////////////////////
-    #-----------------------------------------------------------------------------
-    #-----------------------------Gestio del track------------------------------
-    #///////////////////////////////////////////////////////////////////////////
-
-    observeEvent(input$Data_track_button,{
-
-      if (is.null (trck_path()) ){
-        showNotification("No hi ha cap track carregat")
-        removeModal()
-        return()
-      }
-
-
-
-      output$map2 <- (renderLeaflet({
-
-        leaflet() %>%
-          addPolylines(data = shape_track (),color = "red",weight = 2) %>%
-          addProviderTiles(providers$Esri.WorldStreetMap,group = "WSMWorld Street Map") %>%
-          addProviderTiles(providers$Esri.WorldImagery,group = "Satel.lit") %>%
-          addLayersControl(baseGroups = c("Satel.lit","World Street Map" ))
-
-      }))
-
-      output$data_track <- renderUI (HTML(paste ("<br/>","El track és va efectuar el dia :",isolate( as.character(date(as_datetime(Temps_Inicial_Track()) )) ),"<br/>")))
-
-      output$temps_inicial_track <-renderUI ( HTML(paste0 ("- La hora inicial del track és: ",
-
-
-                                                         isolate(to_hour(Temps_Inicial_Track()))) ))
-
-
-
-      output$temps_final_track <-renderUI (HTML(paste0( "- La hora final del track és: ",
-
-                                                       isolate( to_hour( Temps_Final_Track() ) ) ) ))
-
-
-      output$durada_track <-renderUI(HTML( paste("La durada del track és:",  isolate(as.character(Durada_Track())), "min")))
-
-      output$longitut_track <-renderUI(HTML( paste("El recorregut del track son:", isolate(as.character( Longitud_track())), "m")))
-
-
-    })
-
-
-    #/////////////////////////////////////////////////////////////////////////////
-    #-----------------------------------------------------------------------------
-    #-----------------------------Gestio geolocalitazio foto indiv-----------------------------
-    #///////////////////////////////////////////////////////////////////////////
-
-    #Inicialitzacio contador inicial de les observacions ID
-
-    values <-reactiveValues(count=0)
-
-
-#Carrega de la foto a geolocalitzar=======================================================
-
-    observeEvent(input$myPic, {
-
-      if (is.null(input$myPic$datapath))
-
-        return()
-
-      removeUI(selector = "#image-container2> * ")
-
-      b64 <- base64enc::dataURI(file = pic_geo(), mime = "image/png")
-
-      insertUI(
-        selector = "#image-container2",
-        where = "afterBegin",
-        ui = img(src = b64, width = 250, height = 250)
-      )
-
-
-      if (ncol(dades_foto_geo())<2 ){
-        showNotification("La foto no te metadades")
-        removeModal()
-        return()
-      }
-
-    output$temps_fotogeoloc <-renderText(paste("La hora de les metadades es :", to_hour (time_foto_geo()) ) )
-
-    output$temps_fotogeoloc_corr <-renderText(paste("La hora ajustada es :",
-
-                     to_hour (time_geoloc_corr())))
-
-    })
-
-    #Geolocalitzacio de la foto carregada=======================================================
-
-    observeEvent(input$geoloc_button,{
-
-     if (is.null (trck_path()) ){
-        showNotification("No hi ha cap track carregat")
-        removeModal()
-        return()
-     }
-
-      #-----condicio foto a georeferneciar carregada------------------------------------------
-
-           if (is.null (pic_geo()) ){
-        showNotification("Es necesari carregar foto a georeferenciar")
-        removeModal()
-        return()
-      }
-
-      #-----condicio foto a georeferenciar amb metadades------------------------------------
-
-      if (ncol(dades_foto_geo())<2 ){
-        showNotification("La foto no te metadades")
-        removeModal()
-        return()
-      }
-
-
-      #-----Cal aplicar la condicio que el temps de la foto estigui dins l interval de temps
-
-      if (!(time_geoloc_corr()  %within% Interval_track())){
-        showNotification("Temps de la foto no esta dintre l interval de temps del track")
-       removeModal()
-       return()
-      }
-
-
-
-
-      isolate(posicio())
-
-     output$map <- renderLeaflet({
-
-       leaflet() %>%
-         addPolylines(data = shape_track (),color = "red",weight = 2) %>%
-         addProviderTiles(providers$Esri.WorldStreetMap,group = "WSMWorld Street Map") %>%
-         addProviderTiles(providers$Esri.WorldImagery,group = "Satel.lit") %>%
-         addLayersControl(baseGroups = c("Satel.lit","World Street Map"))%>%
-         addMarkers(lng= isolate( posicio()$lng) , lat= isolate( posicio()$lat),
-
-          options = markerOptions(draggable = TRUE),
-         popup =  paste ( "Longitud:",  as.character(isolate(posicio()[1,1])),
-                        "<br>",
-                        "Latitud:",as.character(isolate(posicio()[1,2] ))))
-
-      })
-
-     output$map3 <- NULL
-
-    })
-
-    #Index per seleccionar el df de sortida en funcio si s arrosego o no la xinxeta
-
-    i <- reactiveValues(datos =0)   #si no s arrosega la xinxeta
-
-
-    #Captacio de la posicio amb lobservacio de l event drag&drop
+    #####################     Drag dels markers #####################################
 
     observeEvent(input$map_marker_dragend, {
 
-      i$datos=1  # S arrossega la xinxeta
+
+      markerId <- input$map_marker_dragend$id
 
       lat <- input$map_marker_dragend$lat
 
       lng <- input$map_marker_dragend$lng
 
-
-
-      coords_rv$datos[1,1] <- lng
-
-      coords_rv$datos[1,2] <- lat
-
-      coords_rv$datos[1,3]<- posicio()[1,3]
-
-
-#--------Modifiquem les chinchetes del planol al arrosegarles
-
+      coords_rv$data[coords_rv$data$id == markerId, c("lng", "lat")] <- c(lng, lat)
 
 
       leafletProxy('map') %>% clearMarkers() %>%
 
-        addMarkers(data= coords_rv$datos,
+        addMarkers(data = coords_rv$data,
 
-                   lng = coords_rv$datos[1,1] , lat = coords_rv$datos[1,2] ,
+                   group = "dades_finals",
 
+                   lng = ~lng, lat = ~lat,
+
+                   layerId = ~id,
 
                    options = markerOptions(draggable = TRUE),
 
-                   popup =  paste ( "Longitud:",as.character(coords_rv$datos[1,1]),
-                                    "<br>",
-                                    "Latitud:",as.character(coords_rv$datos[1,2] )))
+                   popup =  paste ( "<br>",
+                                     "ID: ", as.character(coords_rv$data$id),
+                                     "<br>")) %>%
 
 
-}) # Tancament del draggent
-
-
-#----------------------Per fixar la posicio individual--------------------------------------
-
-  #definim dataframe de l observacio individual
-
-    df_indiv<-reactiveValues(dades= c(
-                                       "id"=integer(),
-                                       "Longitut"=numeric() ,
-                                       "Latitut"= numeric(),
-                                       "Temps"=character(),
-                                       "img"=character()))
-
-    #definim dataframe de l observacions totals
-
-
-    taula_total <- reactiveValues(dades= data.frame(
-                                            "id"=integer(),
-                                            "Longitut"=numeric(),
-                                            "Latitut"=numeric(),
-                                            "Temps"= character(),
-                                            "img"= character()))
-
-    foto_list <- reactiveValues (dades = list( character()))
-
-
-  #DEpen si hem arrosegat o no fixem una posicio o l altre que carraguem al dataframe individul
-
-  # Per la gestio de l imatge a la memoria cache.Cal obtindre el directori
-
-    nom <-reactive(input$myPic$name)
-    root <-reactive(pic_geo())
-    nch <-reactive(nchar(root()))
-
-    # reactive (substr(root(),nch()-4 ,nch())) #El nom de l axiu dins l app
-
-    #Obtenim el directori per fer el canvi de nom d arixiu d ela foto
-
-    dir <-reactive (str_sub(root() , 1, nchar(root())-5))
-
-
-
-    #Fixar el dataframe definitiu=================================================
-
-    observeEvent(input$fix_button,{
-
-
-      values$count <- values$count + 1
-
-      new_root<- reactive(paste0(dir(),values$count,".JPG"))
-
-      file.rename(root(),  new_root() )
-
-      root_WWW <- reactive(paste0(".\\WWW\\",values$count,".JPG"))
-
-      file.rename(root(),  root_WWW() )
-
-
-        if (i$datos==0) {
-
-         df_indiv$dades$id <- values$count
-         df_indiv$dades$Longitut <- posicio()$lng
-         df_indiv$dades$Latitut <- posicio()$lat
-         df_indiv$dades$Temps <- to_hour(posicio()$time)
-         df_indiv$dades$img <-root_WWW()
-          }
-
-        else if (i$datos==1){
-
-          df_indiv$dades$id <- values$count
-          df_indiv$dades$Longitut <- coords_rv$datos[1,1]
-          df_indiv$dades$Latitut <- coords_rv$datos[1,2]
-          df_indiv$dades$Temps <- to_hour(coords_rv$datos[1,3])
-          df_indiv$dades$img <-root_WWW()
-          }
-
-      df_indiv$dades <- as.data.frame(df_indiv$dades)
-
-      output$text5 <-renderText(paste("Les dades i posicio de la fotografia son:", root_WWW()))
-
-      output$coordsTable1<- renderTable(df_indiv$dades,align ="c" ,digits = 6)
-
-    #Escritura de les metadades de geolocalitzacio en la fotografia un cop fixada posicio
-
-    Lat.arg = paste0("-GPSLatitude=",as.character(df_indiv$dades$Latitut))
-    Long.arg = paste0("-GPSLongitude=",as.character(df_indiv$dades$Longitut))
-    exifr::exiftool_call(args = Lat.arg, fnames = new_root() )
-    exifr::exiftool_call(args =  Long.arg, fnames = new_root())
-
-    imatge <- reactive(image_convert( magick::image_read(new_root()),"jpg"))
-
-    #Reescalem la imatge i la guardem a WWW
-
-
-    imatge_reesc<- reactive( image_scale (image = imatge(), "50"))
-
-    image_write (image =imatge_reesc(), path =  root_WWW())
-
-
-
-
+        addPopupImages(coords_rv$data$SourceFile,group = "dades_finals", width = 150)
     })
-##--------------------dEscarrega fotografia geolocalitzada-------------------
 
 
-    #Convertim l arxiu a ImagikPick per poder-la descarregar
+    #=============Tancament de dragent=======================================
 
-    output$descarrega <- downloadHandler(
-      filename = "descarrega.jpg",
-      content = function(file) {
-        magick::image_write(imatge(), file)}
-    )
+  }) # tancament boto geoloc
 
 
-    #/////////////////////////////////////////////////////////////////////////////
-    #-----------------------------------------------------------------------------
-    #-----------------------------Gestio total observacions-----------------------------
-    #//////////////////////////////////////////////////////////////////////////
+  #===============Tancament  boto de les fotos a geolocalitzar================
 
 
-    observeEvent(input$afegir_button,{
+  #---------------------------------------------------------------------------
 
-      #------------------------afegim les dades al data frame total--------------
+} #tanemnt server
 
-   #   v<-values$count
-
-    #  for (i in v) {
-     #   taula_total$dades[i,5] <-str_replace_all(paste0(dir(),v,".JPG"),"'\'",'/')
-    #  }
-
-      directori_imatges <- ".\\WWW"
-
-      llistat_fotos <- reactive(list.files(path= directori_imatges,pattern = "\\.(JPG|JPEG|PNG)$", full.names = TRUE))
-
-     if (is.null(llistat_fotos()))
-
-        return()
-
-    taula_total$dades <-rbind(taula_total$dades,df_indiv$dades)
-
-      #foto_list$dades <- taula_total$dades[,5]
-
-      #append(foto_list$dades,new_root())
-
-
-
-
-#Esborrem les dades de la geolocalitazcio individual------------------------
-
-     # output$coordsTable1<- renderTable(NULL)
-
-#Esborrem el planol individual
-
-     # output$map <- renderLeaflet(NULL)
-      #df_indiv$dades<-NULL
-      #output$temps_fotogeoloc <-NULL
-      #output$temps_fotogeoloc_corr <-NULL
-
-  #--------------------------------------------------------------------------
-
-
-    output$text10 <-renderText("Les dades i posicio de la fotografia son:")
-
-    output$map3 <- renderLeaflet({
-
-                    leaflet()%>%
-
-                      addPolylines(data = shape_track (),color = "red",weight = 2) %>%
-                      addProviderTiles(providers$Esri.WorldStreetMap,group = "WSMWorld Street Map") %>%
-                      addProviderTiles(providers$Esri.WorldImagery,group = "Satel.lit") %>%
-                      addWMSTiles(
-                        "https://geoserveis.icgc.cat/servei/catalunya/quadricules-utm/wms?",
-                      layers = "quadricula_utm_1km",
-                      group ="1x1",
-                      options = WMSTileOptions(format = "image/png",
-                                               transparent = TRUE,
-                                               #opacity = 0.5,
-                                               crs="EPSG:4326"),
-                      attribution = " Institut Cartogràfic i Geològic de Catalunya"
-                    )%>%
-                      addWMSTiles(
-                        "https://geoserveis.icgc.cat/servei/catalunya/quadricules-utm/wms?",
-                        layers = "quadricula_utm_10km",
-                        group ="10x10",
-                        options = WMSTileOptions(format = "image/png",
-                                                 transparent = TRUE,
-                                                 #opacity = 0.5,
-                                                 crs="EPSG:4326"),
-                        attribution = " Institut Cartogràfic i Geològic de Catalunya"
-                      )%>%
-
-
-                    addWMSTiles(
-                      "https://geoserveis.icgc.cat/servei/catalunya/linia-costa/wms?",
-                      layers = "isobates_clar_2500000",
-                      group ="batimetria",
-                      options = WMSTileOptions(format = "image/png",
-                                               transparent = TRUE,
-                                               #opacity = 0.5,
-                                               crs="EPSG:25831"),
-                      attribution = " Institut Cartogràfic i Geològic de Catalunya"
-                    )%>%
-
-
-
-                      addLayersControl(baseGroups = c("World Street Map", "Satel.lit"),
-                                       overlayGroups = c("batimetria","1x1","10x10"),
-                                       options = layersControlOptions(collapsed = TRUE))%>%
-                      addMarkers(data = taula_total$dades,
-                                  group = "fotos",
-                                  lng = taula_total$dades[,2],
-                                  lat = taula_total$dades[,3])%>%
-                                  #options = markerOptions(draggable = FALSE)) %>%
-                                  #popup = ( paste0('<img src="base64enc::dataURI(file =', taula_total$dades[,5], 'mime = "image/png")','" height="','200"></img>') ) )
-
-                     addPopupImages( taula_total$dades[,5], group = "fotos", width = 100)
-
-                  })
-
-
-    output$coordsTable2<- renderTable({  taula_total$dades
-
-      #arrange(df_total$dades,df_total$dades$id)
-    },align ="c" ,digits = 6)
-
-
-})
-#--------------------------------------------------------
-}
 
 shinyApp(ui = ui, server = server)
