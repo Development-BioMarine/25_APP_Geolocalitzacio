@@ -1,0 +1,12 @@
+name: 25_APP_Geolocalitzacio
+title: 25_APP_Geolocalitzacio
+username: projecteanthozoosbcn
+account: projecteanthozoosbcn
+server: shinyapps.io
+hostUrl: https://api.shinyapps.io/v1
+appId: 15377633
+bundleId: 10876772
+url: https://projecteanthozoosbcn.shinyapps.io/25_APP_Geolocalitzacio/
+version: 1
+asMultiple: FALSE
+asStatic: FALSE
